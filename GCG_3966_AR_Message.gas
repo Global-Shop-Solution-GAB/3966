@@ -1,0 +1,238 @@
+Program.Sub.ScreenSU.Start
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+
+Variable.UDT.uGroup.Define("uID",String)
+Variable.UDT.uGroup.Define("uUser",String)
+Variable.UDT.uGroup.Define("uName",String)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'Created for Uniweb Inc by SKT on 6/10/2014 for Quote 5586
+'This script will check to see if the user made any changes to the Terms or Credit Limit
+'If there is a change the user will be prompted of the change and asked if they want to continue or not.
+'If they wish to continue then the changes will be saved.  If they do not wish to continue then the changes will
+'not be saved and the user will be returned to the screen to make corrections to the entry.
+
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+V.Global.iGroupUser.Declare(String)
+V.Local.iRet.Declare(Long)
+V.Local.iParamID.Declare(Long)
+V.Local.iEParam.Declare(Long)
+
+'Check to make sure the pre save hook is being used.
+F.Intrinsic.Control.If(V.Caller.Hook,=,14384)
+	'Open connection to database
+	F.ODBC.Connection!conx.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+	F.Global.Security.GetGroupMembers("ACCT",V.Global.iGroupUser)
+	F.Intrinsic.String.Split(V.Global.iGroupUser,"*!*",V.Global.iGroupUser)
+	
+	'Call Terms Subroutine
+	F.Intrinsic.Control.CallSub(Terms)
+	'Call Credit Subroutine
+	F.Intrinsic.Control.CallSub(Credit)
+F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.CallSub(Unload)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3966_AR_Message.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Main.End
+
+Program.Sub.Terms.Start
+F.Intrinsic.Control.SetErrorHandler("Terms_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+'Variable for SQL Query
+V.Local.sSql.Declare(String)
+'Variable for Return value
+V.Local.sRet.Declare(String)
+'Variable for Terms value
+V.Local.sTerm.Declare(String)
+'Variable for Payment value
+V.Local.sPayment.Declare(String)
+V.Local.sPrgm.Declare(String)
+V.Local.sSub.Declare(String)
+V.Local.iRet.Declare(Long)
+V.Local.iUser.Declare(Long)
+V.Local.iCount.Declare(Long)
+
+
+
+'Set SQL Query to get Terms_Code from AR_Terms_Code
+F.Intrinsic.String.Concat("Select Terms_Code From v_AR_Terms Where Terms_Message = '",V.Passed.000041.Trim,"'",V.Local.sSql)
+'Open connection to record set
+F.ODBC.Connection!conx.OpenLocalRecordsetRO("rst",V.Local.sSql)
+'Check to see if at End of File
+F.Intrinsic.Control.If(V.ODBC.conx!rst.EOF,=,False)
+	'If not set variable to Terms_Code
+	V.Local.sTerm.Set(V.ODBC.conx!rst.FieldVal!Terms_Code)
+F.Intrinsic.Control.Else
+	'If at End of File set variable to blank
+	V.Local.sTerm.Set("")
+F.Intrinsic.Control.EndIf
+'Close connection to record set
+F.ODBC.conx!rst.Close
+
+'Set SQL Query to get Payment_Terms from Customer_Sales
+F.Intrinsic.String.Concat("Select Payment_Terms From V_Customer_Sales Where Customer = '",V.Passed.000002.Trim,"'",V.Local.sSql)
+'Open connection to record set
+F.ODBC.Connection!conx.OpenLocalRecordsetRO("rst",V.Local.sSql)
+'Check to see if at End of File
+F.Intrinsic.Control.If(V.ODBC.conx!rst.EOF,=,False)
+	'If not set variable to payment_Terms
+	V.Local.sPayment.Set(V.ODBC.conx!rst.FieldVal!Payment_Terms)
+F.Intrinsic.Control.Else
+	'If at End of File set variable to blank
+	V.Local.sPayment.Set("")
+F.Intrinsic.Control.EndIf
+'Close connection to record set
+F.ODBC.conx!rst.Close
+
+'Check to make sure the values match
+F.Intrinsic.Control.If(V.Local.sTerm.Trim,!=,V.Local.sPayment.Trim)
+	'If they do not inform user that there is a change in terms and check to see if they want to preceed.
+'	F.Intrinsic.UI.MsgBox("Terms have Changed.  Continue?","Terms",4,V.Local.sRet)
+'	F.Intrinsic.Control.If(V.Local.sRet,=,7)
+'		'If they do not want to continue then do not allow save and call the unload subroutine
+'		V.Passed.777777.Set(1)
+'		F.Intrinsic.Control.CallSub(Unload)
+'	F.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.For(V.Local.iCount,0,V.Global.iGroupUser.UBound,1)
+		F.Global.Security.getuserid(V.Global.iGroupUser(v.Local.iCount),V.Caller.CompanyCode,V.Local.iUser)
+		F.Intrinsic.String.Concat("The terms for Customer:  ",V.Passed.000002.Trim,"  have changed!",V.Local.sSub)
+		F.Global.Messaging.InternalMessageCreate(-1,v.Ambient.Date,v.Local.iUser,"Terms have Changed!",v.Local.sSub,v.Local.sRet)
+		f.Global.Messaging.InternalMessageQueueToUser(v.Local.iUser,v.Local.sRet)
+	F.Intrinsic.Control.Next(V.Local.iCount)
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Terms_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3966_AR_Message.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Terms.End
+
+Program.Sub.Unload.Start
+F.Intrinsic.Control.SetErrorHandler("Unload_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+'Close connection to database
+F.ODBC.Connection!conx.Close
+'End program.
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Unload_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3966_AR_Message.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.End
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Unload.End
+
+Program.Sub.Credit.Start
+F.Intrinsic.Control.SetErrorHandler("Credit_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+'Variable for SQL Query
+V.Local.sSql.Declare(String)
+'Variable for return value
+V.Local.sRet.Declare(String)
+'Variable for Credit Code value
+V.Local.sCreditCode.Declare(String)
+'Variable for Credit Value
+V.Local.sCredit.Declare(String)
+V.Local.sSub.Declare(String)
+V.Local.iRet.Declare(Long)
+V.Local.iUser.Declare(Long)
+V.Local.iCount.Declare(Long)
+
+'Set SQL Query to check the credit code in AR_Credit_Limit
+F.Intrinsic.String.Concat("Select Credit_Code From v_AR_Credit_Limit Where Credit_Amount = '",V.Passed.000035.Trim,"'",V.Local.sSql)
+'Open Connection to record set
+F.ODBC.Connection!conx.OpenLocalRecordsetRO("rst",V.Local.sSql)
+'Check if at End of File
+F.Intrinsic.Control.If(V.ODBC.conx!rst.EOF,=,False)
+	'If not set variable to the value returned.
+	V.Local.sCreditCode.Set(V.ODBC.conx!rst.FieldVal!Credit_Code)
+F.Intrinsic.Control.Else
+	'If at End of File set variable to blank
+	V.Local.sCreditCode.Set("")
+F.Intrinsic.Control.Endif
+'Close connection to record set
+F.ODBC.conx!rst.Close
+
+'Set SQL Query to check Credit in Customer_Master
+F.Intrinsic.String.Concat("Select Credit From v_Customer_Master Where Customer = '",V.Passed.000002.Trim,"'",V.Local.sSql)
+'Open connection to record set
+F.ODBC.Connection!conx.OpenLocalRecordsetRO("rst",V.Local.sSql)
+'Check it at End of File
+F.Intrinsic.Control.If(V.ODBC.conx!rst.EOF,=,False)
+	'If not set variable to the value returned
+	V.Local.sCredit.Set(V.ODBC.conx!rst.FieldVal!Credit)
+F.Intrinsic.Control.Else
+	'If at End of File set variable to blank
+	V.Local.sCredit.Set("")
+F.Intrinsic.Control.EndIf
+'Close connection to record set
+F.ODBC.conx!rst.Close
+
+'Check to make sure the two values match
+F.Intrinsic.Control.If(V.Local.sCreditCode.Trim,!=,V.Local.sCredit.Trim)
+	'If not inform user of the change and ask if they wish to continue.
+'	F.Intrinsic.UI.Msgbox("Credit Limit has Changed. Continue?","Credit",4,V.Local.sRet)
+'	'If they do not want to continue do not allow save and call unload subroutine
+'	F.Intrinsic.Control.If(V.Local.sRet,=,7)
+'		V.Passed.777777.Set(1)
+'		F.Intrinsic.Control.CallSub(Unload)
+'	F.Intrinsic.Control.EndIf
+		F.Intrinsic.Control.For(V.Local.iCount,0,V.Global.iGroupUser.UBound,1)
+		F.Global.Security.getuserid(V.Global.iGroupUser(v.Local.iCount),V.Caller.CompanyCode,V.Local.iUser)
+		F.Intrinsic.String.Concat("The Credit Limit for Customer:  ",V.Passed.000002.Trim,"  has changed!",V.Local.sSub)
+		F.Global.Messaging.InternalMessageCreate(-1,v.Ambient.Date,v.Local.iUser,"Credit Limit has Changed!",v.Local.sSub,v.Local.sRet)
+		f.Global.Messaging.InternalMessageQueueToUser(v.Local.iUser,v.Local.sRet)
+	F.Intrinsic.Control.Next(V.Local.iCount)
+F.Intrinsic.Control.EndIf
+'F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Credit_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3966_AR_Message.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Credit.End
+
+Program.Sub.Comments.Start
+${$0$}$GCG_3966_AR_Message$}$SUPERVSR$}$5/10/2016
+${$1$}$$}$$}$0$}$14384$}$PB Save Pre Hook$}$5/10/2016 10:00:03 AM$}$(Program: AR0020GI; Screen: ARS002A1)
+
+Program.Sub.Comments.End
+
